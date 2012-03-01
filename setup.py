@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="gevent-socketio",
-    version="versiontools:gevent-socketio",
+    version="0.2.1.smartupz-1",
     description="SocketIO server based on the Gevent pywsgi server, a Python network library",
     #long_description=open("README.rst").read(),
     author="Jeffrey Gelens",
@@ -11,7 +11,6 @@ setup(
     url="http://www.gelens.org/code/socketio/",
     download_url="http://www.gelens.org/code/socketio/",
     install_requires=("gevent-websocket", "anyjson"),
-    setup_requires = ("versiontools >= 1.7",),
     packages=find_packages(exclude=["examples","tests"]),
     classifiers=[
         "Development Status :: 4 - Beta",
