@@ -7,6 +7,7 @@ from gevent.pywsgi import WSGIHandler
 from socketio import transports
 from geventwebsocket.handler import WebSocketHandler
 
+
 class SocketIOHandler(WSGIHandler):
     RE_REQUEST_URL = re.compile(r"""
         ^/(?P<namespace>[^/]+)

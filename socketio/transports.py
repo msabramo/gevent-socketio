@@ -1,8 +1,13 @@
 import gevent
 import socket
 import urlparse
+from logging import getLogger
 
 from gevent.queue import Empty
+
+
+logger = getLogger("socketio.transports")
+
 
 class BaseTransport(object):
     """Base class for all transports. Mostly wraps handler class functions."""
@@ -36,7 +41,7 @@ class BaseTransport(object):
             headers.append(self.content_type)
 
         headers.extend(self.headers)
-        print headers
+        logger.debug("Sending reply with headers: %r", headers)
         self.handler.start_response(status, headers, **kwargs)
 
 

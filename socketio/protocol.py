@@ -1,6 +1,9 @@
 import gevent
 import anyjson as json
 
+from logging import getLogger
+logger = getLogger("socketio.protocol")
+
 
 class SocketIOProtocol(object):
     """SocketIO protocol specific functions."""
@@ -82,7 +85,7 @@ class SocketIOProtocol(object):
         data.encode('utf-8', 'ignore')
         msg_type, msg_id, tail = data.split(":", 2)
 
-        print "RECEIVED MSG TYPE ", msg_type, data
+        logger.debug("RECEIVED MSG TYPE %r %r", msg_type, data)
 
         if msg_type == "0": # disconnect
             self.session.kill()
@@ -106,7 +109,7 @@ class SocketIOProtocol(object):
             message['type'] = 'json'
             message['data'] = json.loads(data)
         elif msg_type == "5": # event
-            print "EVENT with data", data
+            logger.debug("EVENT with data: %r", data)
             message.update(json.loads(data))
 
             if "+" in msg_id:

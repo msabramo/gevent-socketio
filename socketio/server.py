@@ -1,8 +1,5 @@
-import sys
 import random
-import traceback
 import gevent
-from socket import error
 
 from gevent.pywsgi import WSGIServer
 from gevent.queue import Queue
@@ -11,6 +8,8 @@ from socketio.protocol import SocketIOProtocol
 from socketio.handler import SocketIOHandler
 from socketio.policyserver import FlashPolicyServer
 
+from logging import getLogger
+logger = getLogger("socketio.server")
 
 __all__ = ['SocketIOServer']
 
@@ -33,11 +32,8 @@ class SocketIOServer(WSGIServer):
         if self.policy_server is not None:
             try:
                 self.policy_server.start()
-            except error, ex:
-                sys.stderr.write('FAILED to start flash policy server: %s\n' % (ex, ))
             except Exception:
-                traceback.print_exc()
-                sys.stderr.write('FAILED to start flash policy server.\n\n')
+                logger.exception("Failed to start flash policy server.")
         super(SocketIOServer, self).start_accepting()
 
     def kill(self):
