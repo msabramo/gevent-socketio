@@ -25,7 +25,7 @@ class SocketIOServer(WSGIServer):
         else:
             self.policy_server = None
 
-        kwargs['handler_class'] = SocketIOHandler
+        kwargs.setdefault('handler_class', SocketIOHandler)
         super(SocketIOServer, self).__init__(*args, **kwargs)
 
     def start_accepting(self):
