@@ -1,5 +1,6 @@
 import gevent
 import anyjson as json
+from socketio.exceptions import DecodeError
 
 from logging import getLogger
 logger = getLogger("socketio.protocol")
