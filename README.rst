@@ -17,13 +17,13 @@ Installation
 ------------
 
 Right now the code is only avaible on github, so you can either clone
-this repository and install using ``setup.py``
+this repository and install using ``setup.py``::
 
     git clone git://github.com/Smartupz/pysocketio.git
     cd pysocketio
     python setup.py install
 
-or using ``pip``:
+or using ``pip``::
 
     pip install git+https://github.com/Smartupz/gevent-socketio.git
 
