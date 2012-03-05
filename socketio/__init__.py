@@ -1,4 +1,4 @@
-__version__ = (0, 2, 1, 'dev', 0)
-__all__ = ['SocketIOServer']
+__version__ = '0.9.1.dev1'
+__all__ = ('SocketIOServer',)
 
-from socketio.server import SocketIOServer
+from .server import SocketIOServer
