@@ -8,10 +8,10 @@ The `Socket.io`_ compatible server library for Python.
 Versioning
 ----------
 
-We try to follow the `Socket.io`_ versions. This means that `pysocketio` version
-developed to be compatible with ``Socket.io-client 0.9.0``, will be versioned
+We try to follow the :term:`Socket.io` versions. This means that `pysocketio` version
+developed to be compatible with :term:`Socket.io` ``0.9.0`` will be versioned
 ``0.9.0.N``. It does not mean that version ``0.9.1.0`` will be incompatible with
-a ``0.9.0`` client - that depends entirely on the `Socket.io`_.
+a ``0.9.0`` client - that depends entirely on the :term:`Socket.io`.
 
 Installation
 ------------
