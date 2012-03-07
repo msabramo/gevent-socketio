@@ -1,3 +1,5 @@
+from __future__ import absolute_import, unicode_literals
+
 from gevent.server import StreamServer
 
 __all__ = ['FlashPolicyServer']
