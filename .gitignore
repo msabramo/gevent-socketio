@@ -3,6 +3,8 @@
 *.egg
 build
 dist
+htmlcov
 .project
 .pydevproject
 .settings
+.coverage

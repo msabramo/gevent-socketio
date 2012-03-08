@@ -1,145 +1,19 @@
 from __future__ import absolute_import, unicode_literals
 
-from itertools import chain
-
-import urlparse
-import re
 import gevent
-import anyjson as json
 
-from collections import namedtuple
-from socketio.exceptions import DecodeError
 
 from logging import getLogger
 logger = getLogger("socketio.protocol")
 
 
-class NamedInt(int):
-    __slots__ = ("description")
+from .packets import Packet
 
-    def __new__(self, value, description):
-        x = int.__new__(self, value)
-        x.description = description
-        return x
-
-    def __repr__(self):
-        return "<{0} = 0>".format(self.description)
-
-    def __eq__(self, other):
-        if isinstance(other, basestring):
-            return self.description == other
-        return int.__eq__(self, other)
-
-
-# Error reasons
-REASONS = (
-    NamedInt(0, "transport not supported"),
-    NamedInt(1, "client not handshaken"),
-    NamedInt(2, "unauthorized")
-)
-
-ADVICES = (
-    NamedInt(0, "reconnect"),
-)
-
-
-Packet = namedtuple("Packet", "type, id, ack, endpoint, data")
-AckPacket = namedtuple("AckPacket", Packet._fields + ("ackId", "args"))
-ConnectPacket = namedtuple("ConnectPacket", Packet._fields + ("qs",))
-ErrorPacket = namedtuple("ErrorPacket", Packet._fields + ("reason", "advice"))
-EventPacket = namedtuple("AckPacket", Packet._fields + ("name", "args"))
 
 class BaseProtocol(object):
-    _PACKET_RE = re.compile(br"^(?P<type>[^:]+):(?P<id>[0-9]+)?(?P<ack>[+])?:(?P<endpoint>[^:]+)?:?(?P<data>.+)?$", re.DOTALL)
 
-    PACKET_TYPES = {
-        b"0": "disconnect",
-        b"1": "connect",
-        b"2": "heartbeat",
-        b"3": "message",
-        b"4": "json",
-        b"5": "event",
-        b"6": "ack",
-        b"7": "error",
-        b"8": "noop",
-    }
-
-    def decode_packet(self, rawdata):
-        """
-        The packet format is as follow:
-        
-            {type} ':' {id}? {ack}? ':' {endpoint} ':'? {data}
-        
-        where:
-        
-            * ``type`` is the packet type,
-            * ``id`` is an optional integer specifing the packet's ID,
-            * ``ack`` can be either omited or a ``'+'` character,
-            * ``endpoint`` is a path specifying custom namespace,
-            * ``data`` is any non-whitespace set of characters 
-        """
-        m = self._PACKET_RE.match(rawdata)
-        if m is None:
-            raise DecodeError("Malformed packet {0!r}".format(rawdata))
-        packet = Packet(*m.groups())
-        packet = packet._replace(
-            type=self.PACKET_TYPES[packet.type],
-            endpoint=packet.endpoint.decode('utf-8') if packet.endpoint else None,
-            ack=("data" if packet.ack else True) if packet.id else None
-        )
-        postprocess = getattr(self, "_post_" + packet.type, None)
-        if postprocess is not None:
-            packet = postprocess(packet)
-        return packet
-
-    def _plus_split(self, data):
-        i = data.find(b"+")
-        if i < 0:
-            return data, ''
-        return data[:i], data[i + 1:]
-
-    def _post_error(self, packet):
-        if packet.data:
-            reason, advice = self._plus_split(packet.data)
-            reason = REASONS[int(reason)] if reason else ''
-            advice = ADVICES[int(advice)] if advice else ''
-        else:
-            reason, advice = '', ''
-        return ErrorPacket(packet.type, packet.id, packet.ack, packet.endpoint, None, reason, advice)
-
-    def _post_json(self, packet):
-        try:
-            return packet._replace(data=self._parse_json(packet.data))
-        except ValueError:
-            raise DecodeError("Malformed JSON in data: %r" % packet.data)
-
-    def _post_connect(self, packet):
-        qs = urlparse.parse_qs(packet.data.decode('utf-8')[1:]) if packet.data else {}
-        return ConnectPacket(packet.type, packet.id, packet.ack, packet.endpoint, None, qs)
-
-    def _post_ack(self, packet):
-        ackid, args = self._plus_split(packet.data)
-        if args:
-            try:
-                args = self._parse_json(args)
-            except ValueError:
-                raise DecodeError("Malformed JSON in args: %r" % args)
-        else:
-            args = []
-        return AckPacket(packet.type, packet.id, packet.ack, packet.endpoint, None, ackid, args)
-
-    def _post_message(self, packet):
-        return packet._replace(data=packet.data or b'')
-
-    def _post_event(self, packet):
-        try:
-            data = self._parse_json(packet.data)
-        except ValueError:
-            raise DecodeError("Malformed JSON in event data: %r" % packet.data)
-        return EventPacket(packet.type, packet.id, packet.ack, packet.endpoint, None, data["name"], data.get("args", []))
-
-    def _parse_json(self, rawdata):
-        return json.loads(rawdata)
+    def _decode_packet(self, rawdata):
+        return Packet.decode(rawdata)
 
 
 class LegacyProtocol(BaseProtocol):
@@ -221,8 +95,10 @@ class LegacyProtocol(BaseProtocol):
         return encoded_msg
 
     def decode(self, data):
-        packet = self.decode_packet(data)
-        return dict((k, v) for k, v in zip(packet._fields, packet) if v is not None)
+        packet = self._decode_packet(data)
+        d = dict((k, v) for k, v in zip(packet._fields, packet) if v is not None)
+        d["type"] = type(packet).__name__[:-6].lower()
+        return d
 
 SocketIOProtocol = LegacyProtocol
 

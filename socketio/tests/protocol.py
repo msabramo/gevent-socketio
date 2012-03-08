@@ -39,11 +39,11 @@ class DecodeTest(TestCase):
 
     def test_ack(self):
         msg = self.proto.decode(b"6:::140")
-        self.assertMsg(msg, type="ack", ackId=b'140', args=[])
+        self.assertMsg(msg, type="ack", ackid=b'140', args=[])
 
     def test_ack_with_args(self):
         msg = self.proto.decode(b'6:::12+["woot","wa"]')
-        self.assertMsg(msg, type="ack", ackId=b'12', args=["woot", "wa"])
+        self.assertMsg(msg, type="ack", ackid=b'12', args=["woot", "wa"])
 
     def test_ack_with_bad_json(self):
         """
