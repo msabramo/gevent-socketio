@@ -31,10 +31,9 @@ class SocketIOProtocol(object):
     def send_event(self, name, *args):
         self.send("5:::" + json.dumps({'name': name, 'args': args}))
 
-    def receive(self):
+    def receive(self, timeout=None):
         """Wait for incoming messages."""
-
-        return self.session.get_server_msg()
+        return self.session.get_server_msg(timeout=timeout)
 
     def broadcast(self, message, exceptions=None, include_self=False):
         """
