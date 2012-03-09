@@ -2,18 +2,20 @@ from __future__ import absolute_import, unicode_literals
 
 import gevent
 
-
 from logging import getLogger
 logger = getLogger("socketio.protocol")
 
 
-from .packets import Packet
+from .packets import Packet, NAME_FOR_PACKET, PACKET_BY_NAME
 
 
 class BaseProtocol(object):
 
     def _decode_packet(self, rawdata):
         return Packet.decode(rawdata)
+
+    def _encode_packet(self, packet):
+        return packet.encode()
 
 
 class LegacyProtocol(BaseProtocol):
@@ -85,19 +87,20 @@ class LegacyProtocol(BaseProtocol):
             session.put_client_msg(message)
 
     def encode(self, message):
+        """
+        Encode dictionary into bytes with message.
+        """
         if isinstance(message, basestring):
-            encoded_msg = message
-        elif isinstance(message, (object, dict)):
-            return self.encode(json.dumps(message))
-        else:
-            raise ValueError("Can't encode message")
-
-        return encoded_msg
+            return message
+        cls = PACKET_BY_NAME[message.pop("type")]
+        for f in cls._fields:
+            message.setdefault(f, None)
+        return self._encode_packet(cls(**message))
 
     def decode(self, data):
         packet = self._decode_packet(data)
         d = dict((k, v) for k, v in zip(packet._fields, packet) if v is not None)
-        d["type"] = type(packet).__name__[:-6].lower()
+        d["type"] = NAME_FOR_PACKET[type(packet)]
         return d
 
 SocketIOProtocol = LegacyProtocol

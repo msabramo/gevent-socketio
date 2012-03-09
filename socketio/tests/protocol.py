@@ -110,7 +110,7 @@ class EncodeTest(TestCase):
         self.assertEqual(data, b"7:::0")
 
     def test_error_with_reason_and_advice(self):
-        data = self.proto.encode({"type": "error", "reason": "unathorized", "advice": "reconnect"})
+        data = self.proto.encode({"type": "error", "reason": "unauthorized", "advice": "reconnect"})
         self.assertEqual(data, b"7:::2+0")
 
     def test_error_with_endpoint(self):
@@ -118,11 +118,11 @@ class EncodeTest(TestCase):
         self.assertEqual(data, b"7::/woot")
 
     def test_ack(self):
-        data = self.proto.encode({"type": "ack", "ackId": b'140'})
+        data = self.proto.encode({"type": "ack", "ackid": b'140'})
         self.assertEqual(data, b"6:::140")
 
     def test_ack_with_args(self):
-        data = self.proto.encode({"type": "ack", "ackId": b'12', "args": ["woot", "wa"]})
+        data = self.proto.encode({"type": "ack", "ackid": b'12', "args": ["woot", "wa"]})
         self.assertEqual(data, b'6:::12+["woot", "wa"]')
 
     def test_json(self):
@@ -131,19 +131,19 @@ class EncodeTest(TestCase):
 
     def test_json_with_id_and_ack(self):
         data = self.proto.encode({"type": "json", "data": {"a": "b"}, "id": 1, "ack": "data"})
-        self.assertEqual(data, b'4:1+::{"a":"b"}')
+        self.assertEqual(data, b'4:1+::{"a": "b"}')
 
     def test_event(self):
         data = self.proto.encode({"type": "event", "name": "woot"})
-        self.assertEqual(data, b'5:::{"name":"woot"}')
+        self.assertEqual(data, b'5:::{"name": "woot"}')
 
     def test_event_with_id_and_ack(self):
         data = self.proto.encode({"type": "event", "id": b'1', "ack": "data", "name": "tobi"})
-        self.assertEqual(data, b'5:1+::{"name":"tobi"}')
+        self.assertEqual(data, b'5:1+::{"name": "tobi"}')
 
     def test_event_with_data(self):
-        data = self.proto.encode({"type": "event", "name": "tobi", "args": [{"a": "b"}, 2, "3"]})
-        self.assertEqual(data, b'5:::{"name":"edwald","args":[{"a":"b"},2,"3"]}}')
+        data = self.proto.encode({"type": "event", "name": "edwald", "args": [{"a": "b"}, 2, "3"]})
+        self.assertEqual(data, b'5:::{"name": "edwald", "args": [{"a": "b"}, 2, "3"]}')
 
     def test_message(self):
         data = self.proto.encode({"type": "message", "data": "woot"})
@@ -162,7 +162,7 @@ class EncodeTest(TestCase):
         self.assertEqual(data, b'1::/tobi')
 
     def test_connect_with_querystring(self):
-        data = self.proto.encode({"type": "connect", "endpoint": "/test", "qs": "?test=1"})
+        data = self.proto.encode({"type": "connect", "endpoint": "/test", "qs": {"test": 1}})
         self.assertEqual(data, b'1::/test:?test=1')
 
     def test_disconnect(self):

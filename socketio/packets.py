@@ -4,8 +4,9 @@ import re
 import urlparse
 import anyjson as json
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from socketio.exceptions import DecodeError
+import urllib
 
 
 class NamedInt(int):
@@ -57,6 +58,19 @@ class Packet(object):
             raise DecodeError("Unknown packet type: %d" % type_)
         return packet_cls.from_data(**data)
 
+    def encode(self):
+        parts = []
+        parts.append(bytes(PACKET_TYPES.index(type(self))))
+        parts.append(bytes(self.id or b'') + ('+' if self.ack == "data" else b''))
+        parts.append(self.endpoint)
+        data = self._encoded_data()
+        if data is not None:
+            parts.append(data)
+        return b":".join(bytes(x) if x else b'' for x in parts)
+
+    def _encoded_data(self):
+        return None
+
     @classmethod
     def from_data(cls, id, ack, endpoint, *args, **kwargs):
         return cls(id, ("data" if ack else True) if id else None,
@@ -70,26 +84,29 @@ class Packet(object):
         return data[:i], data[i + 1:]
 
     @staticmethod
-    def _parse_json(data):
+    def _load_json(data):
         try:
             return json.loads(data)
         except ValueError:
             raise DecodeError("Malformed JSON data: %r" % data)
 
+    @staticmethod
+    def _dump_json(data):
+        return json.dumps(data)
 
 class ErrorPacket(Packet, namedtuple("_ErrorPacket", BASE_FIELDS + ("reason", "advice"))):
     __slots__ = ()
 
     # Error reasons
-    REASONS = (
-        NamedInt(0, "transport not supported"),
-        NamedInt(1, "client not handshaken"),
-        NamedInt(2, "unauthorized")
-    )
+    REASONS = [
+        "transport not supported",
+        "client not handshaken",
+        "unauthorized",
+    ]
 
-    ADVICES = (
-        NamedInt(0, "reconnect"),
-    )
+    ADVICES = [
+        "reconnect"
+    ]
 
     @classmethod
     def from_data(cls, id, ack, endpoint, data):
@@ -100,6 +117,11 @@ class ErrorPacket(Packet, namedtuple("_ErrorPacket", BASE_FIELDS + ("reason", "a
         else:
             reason, advice = '', ''
         return super(ErrorPacket, cls).from_data(id, ack, endpoint, reason, advice)
+
+    def _encoded_data(self):
+        reason = self.REASONS.index(self.reason) if self.reason else None
+        advice = self.ADVICES.index(self.advice) if self.advice else None
+        return b'+'.join(bytes(x) for x in (reason, advice) if x is not None) or None
 
 
 class DataPacket(Packet, namedtuple("_DataPacket", BASE_FIELDS + ("data",))):
@@ -115,8 +137,10 @@ class JSONPacket(DataPacket):
 
     @classmethod
     def _parse_data(cls, data):
-        return cls._parse_json(data)
+        return cls._load_json(data)
 
+    def _encoded_data(self):
+        return self._dump_json(self.data)
 
 class MessagePacket(DataPacket):
     __slots__ = ()
@@ -125,6 +149,8 @@ class MessagePacket(DataPacket):
     def _parse_data(cls, data):
         return data or b''
 
+    def _encoded_data(self):
+        return self.data
 
 class ConnectPacket(Packet, namedtuple("_ConnectPacket", BASE_FIELDS + ("qs",))):
     __slots__ = ()
@@ -134,6 +160,11 @@ class ConnectPacket(Packet, namedtuple("_ConnectPacket", BASE_FIELDS + ("qs",)))
         qs = urlparse.parse_qs(data.decode('utf-8')[1:]) if data else {}
         return super(ConnectPacket, cls).from_data(id, ack, endpoint, qs)
 
+    def _encoded_data(self):
+        if not self.qs:
+            return None
+        return b'?' + urllib.urlencode(self.qs.items())
+
 
 class AckPacket(Packet, namedtuple("_AckPacket", BASE_FIELDS + ("ackid", "args"))):
     __slots__ = ()
@@ -142,18 +173,32 @@ class AckPacket(Packet, namedtuple("_AckPacket", BASE_FIELDS + ("ackid", "args")
     def from_data(cls, id, ack, endpoint, data):
         ackid, args = cls._plus_split(data)
         if args:
-            args = cls._parse_json(args)
+            args = cls._load_json(args)
         else:
             args = []
         return super(AckPacket, cls).from_data(id, ack, endpoint, ackid, args)
+
+    def _encoded_data(self):
+        data = bytes(self.ackid)
+        if self.args:
+            data += "+"
+            data += self._dump_json(self.args)
+        return data
 
 class EventPacket(Packet, namedtuple("_EventPacket", BASE_FIELDS + ("name", "args"))):
     __slots__ = ()
 
     @classmethod
     def from_data(cls, id, ack, endpoint, data):
-        event_data = cls._parse_json(data)
+        event_data = cls._load_json(data)
         return cls(id, ack, endpoint, event_data["name"], event_data.get("args", []))
+
+    def _encoded_data(self):
+        data = OrderedDict()
+        data["name"] = self.name
+        if self.args is not None:
+            data["args"] = self.args
+        return self._dump_json(data)
 
 
 _SimplePacket = namedtuple("_SimplePacket", BASE_FIELDS)
@@ -182,3 +227,6 @@ PACKET_TYPES = (
     ErrorPacket,
     NoopPacket,
 )
+
+PACKET_BY_NAME = dict((cls.__name__[:-6].lower(), cls) for cls in PACKET_TYPES)
+NAME_FOR_PACKET = dict((cls, cls.__name__[:-6].lower()) for cls in PACKET_TYPES)
