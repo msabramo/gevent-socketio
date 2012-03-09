@@ -124,8 +124,8 @@ class Session(object):
     def kill(self):
         if self.connected:
             self.state = self.STATE_DISCONNECTING
-            self.server_queue.put_nowait(None)
-            self.client_queue.put_nowait(None)
+            self.server_queue.put_nowait({"type": "disconnect"})
+            self.client_queue.put_nowait("0::")
             #gevent.kill(self.wsgi_app_greenlet)
         else:
             pass # Fail silently
