@@ -38,7 +38,7 @@ class SocketIOHandler(WSGIHandler):
         else:
             session = self.server.get_session()
             #data = "%s:15:10:jsonp-polling,htmlfile" % (session.session_id,)
-            data = "%s:15:10:%s" % (session.session_id, ",".join(self.handler_types.keys()))
+            data = "%s:15:10:websocket,xhr-polling" % (session.session_id,)
             self.write_smart(data)
 
     def write_jsonp_result(self, data, wrapper="0"):
