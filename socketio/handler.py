@@ -50,9 +50,13 @@ class SocketIOHandler(WSGIHandler):
         self.result = ['io.j[%s]("%s");' % (wrapper, data)]
 
     def write_plain_result(self, data):
-        self.start_response("200 OK", [
-            ("Content-Type", "text/plain")
-        ])
+        headers = [("Content-Type", "text/plain")]
+        if self.server.cors_domain:
+            headers += [
+                ("Access-Control-Allow-Origin", self.server.cors_domain),
+                ("Access-Control-Allow-Credentials", "true"),
+            ]
+        self.start_response("200 OK", headers)
         self.result = [data]
 
     def write_smart(self, data):

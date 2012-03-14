@@ -20,7 +20,8 @@ class SocketIOServer(WSGIServer):
 
     def __init__(self, *args, **kwargs):
         self.sessions = {}
-        self.namespace = kwargs.pop('namespace')
+        self.namespace = kwargs.pop('namespace', 'socket.io')
+        self.cors_domain = kwargs.pop('cors', '')
 
         if kwargs.pop('policy_server', True):
             self.policy_server = FlashPolicyServer()

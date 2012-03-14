@@ -3,6 +3,7 @@ from __future__ import absolute_import, unicode_literals
 import gevent
 
 from logging import getLogger
+from socketio.packets import AckPacket, EventPacket
 logger = getLogger("socketio.protocol")
 
 
@@ -28,11 +29,10 @@ class LegacyProtocol(BaseProtocol):
         self.session = None
 
     def ack(self, msg_id, params):
-        self.send("6:::%s+%s" % (msg_id, json.dumps(params)))
+        self.send(AckPacket(None, None, "", msg_id, params).encode())
 
     def emit(self, event, endpoint, *args):
-        self.send("5::%s:%s" % (endpoint, json.dumps({'name': event,
-                                                      'args': args})))
+        self.send(EventPacket(None, None, endpoint, event, *args).encode())
 
     def send(self, message, destination=None):
         if destination is None:
