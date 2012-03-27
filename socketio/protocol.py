@@ -97,7 +97,7 @@ class SocketIOProtocol(object):
 
         elif msg_type == "2": # heartbeat
             self.session.heartbeat()
-            return None
+            return {'type': 'heartbeat'}
 
         msg_endpoint, data = tail.split(":", 1)
         message = {'endpoint': msg_endpoint}
@@ -126,7 +126,7 @@ class SocketIOProtocol(object):
             if len(els) == 2:
                 message['advice'] = els[1]
         elif msg_type == "8": # noop
-            return None
+            message['type'] = 'noop'
         else:
             raise Exception("Unknown message type: %s" % msg_type)
 
