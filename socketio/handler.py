@@ -6,6 +6,7 @@ import urlparse
 from gevent.pywsgi import WSGIHandler
 from socketio import transports
 from geventwebsocket.handler import WebSocketHandler
+from socketio.protocol import SocketIOProtocol
 
 
 class SocketIOHandler(WSGIHandler):
@@ -73,6 +74,9 @@ class SocketIOHandler(WSGIHandler):
         path = self.environ.get('PATH_INFO')
         request_method = self.environ.get("REQUEST_METHOD")
         request_tokens = self.RE_REQUEST_URL.match(path)
+
+        # make a private socketio object
+        self.environ['socketio'] = SocketIOProtocol(self)
 
         # Kick non-socket.io requests to our superclass
         if not path.lstrip('/').startswith(self.server.namespace):
