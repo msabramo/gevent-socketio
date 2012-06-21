@@ -91,7 +91,7 @@ def sio_server(func):
     def _server(env, start_response):
         if "socketio" not in env:
             return
-        if env["socketio"].session is None:
+        if env["socketio"]._session is None:
             return
         return func(env, env["socketio"])
     return _server

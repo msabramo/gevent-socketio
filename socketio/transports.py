@@ -7,6 +7,8 @@ import weakref
 from logging import getLogger
 
 from gevent.queue import Empty
+from socketio import packets
+from geventwebsocket.exceptions import WebSocketError
 
 
 logger = getLogger("socketio.transports")
@@ -26,13 +28,10 @@ class BaseTransport(object):
         self.headers_list = []
         self.handler = weakref.ref(handler)
 
-    def encode(self, data):
-        return self.handler().environ['socketio'].encode(data)
+    def write_packet(self, packet):
+        self.write(packet.encode())
 
-    def decode(self, data):
-        return self.handler().environ['socketio'].decode(data)
-
-    def write(self, data=""):
+    def write(self, data):
         if 'Content-Length' not in self.handler().response_headers_list:
             self.handler().response_headers.append(('Content-Length', len(data)))
             self.handler().response_headers_list.append('Content-Length')
@@ -54,7 +53,7 @@ class XHRPollingTransport(BaseTransport):
 
     def options(self):
         self.start_response("200 OK", ())
-        self.write()
+        self.write('')
         return []
 
     def get(self, session):
@@ -62,12 +61,11 @@ class XHRPollingTransport(BaseTransport):
 
         try:
             message = session.get_client_msg(timeout=5.0)
-            message = self.encode(message)
         except Empty:
-            message = "8::" # NOOP
+            message = packets.NoopPacket()
 
         self.start_response("200 OK", [])
-        self.write(message)
+        self.write_packet(message)
 
         return []
 
@@ -75,7 +73,7 @@ class XHRPollingTransport(BaseTransport):
         return self.handler().wsgi_input.readline()
 
     def post(self, session):
-        session.put_server_msg(self.decode(self._request_body()))
+        session.put_server_msg(packets.Packet.decode(self._request_body()))
 
         self.start_response("200 OK", [
             ("Connection", "close"),
@@ -91,7 +89,7 @@ class XHRPollingTransport(BaseTransport):
             self.start_response("200 OK", [
                 ("Connection", "close"),
             ])
-            self.write("1::")
+            self.write_packet(packets.ConnectPacket(None, None, None, None))
 
             return []
         elif request_method in ("GET", "POST", "OPTIONS"):
@@ -182,7 +180,7 @@ class WSInboundGreenlet(WSGreenlet):
                 self._session.kill()
                 break
             else:
-                decoded_message = self.decode(message)
+                decoded_message = packets.Packet.decode(message)
                 if decoded_message is not None:
                     self._session.put_server_msg(decoded_message)
 
@@ -197,7 +195,13 @@ class WSOutboundGreenlet(WSGreenlet):
                 self._session.kill()
                 break
 
-            self._websocket.send(self.encode(message))
+            try:
+                logger.debug("Sending message %r", message)
+                self._websocket.send(message.encode())
+                logger.debug("Message %r sent.", message)
+            except WebSocketError:
+                logger.exception("Outbound greenlet crashed.")
+                break
 
 
 class WebsocketTransport(BaseTransport):
@@ -206,16 +210,14 @@ class WebsocketTransport(BaseTransport):
         websocket = self.handler().environ['wsgi.websocket']
         websocket.send("1::")
 
-        in_ = WSOutboundGreenlet(session, websocket); in_.start()
-        out_ = WSInboundGreenlet(session, websocket); out_.start()
+        in_ = WSOutboundGreenlet(session, websocket)
+        in_.start()
+        out_ = WSInboundGreenlet(session, websocket)
+        out_.start()
 
-        heartbeat = self.handler().environ['socketio'].start_heartbeat()
+        # heartbeat = self.handler().environ['socketio'].start_heartbeat()
 
-        return [in_, out_, heartbeat]
-
-
-class FlashSocketTransport(WebsocketTransport):
-    pass
+        return [in_, out_]
 
 
 class HTMLFileTransport(XHRPollingTransport):

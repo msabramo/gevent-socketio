@@ -2,6 +2,7 @@ from __future__ import absolute_import, unicode_literals
 
 import gevent
 import weakref
+import json
 
 from logging import getLogger
 from socketio.packets import AckPacket, EventPacket
@@ -25,9 +26,12 @@ class LegacyProtocol(BaseProtocol):
     Legacy SocketIO protocol implementation, which works on dicts.
     """
 
-    def __init__(self, handler):
-        self.handler = weakref.ref(handler)
-        self.session = None
+    def __init__(self, session):
+        self._session = session
+
+    @property
+    def session(self):
+        return self._session
 
     def ack(self, msg_id, params):
         self.send(AckPacket(None, None, "", msg_id, params).encode())
@@ -44,26 +48,7 @@ class LegacyProtocol(BaseProtocol):
 
     def receive(self, timeout=None):
         """Wait for incoming messages."""
-        return self.session.get_server_msg(timeout=timeout)
-
-    def broadcast(self, message, exceptions=None, include_self=False):
-        """
-        Send messages to all connected clients, except itself and some
-        others.
-        """
-
-        if exceptions is None:
-            exceptions = []
-
-        if not include_self:
-            exceptions.append(self.session.session_id)
-
-        for session_id, session in self.handler.server.sessions.iteritems():
-            if session_id not in exceptions:
-                self._write(message, session)
-
-    def broadcast_event(self, name, *args, **kwargs):
-        self.broadcast("5:::" + json.dumps({'name': name, 'args': args}), **kwargs)
+        return self._session.get_server_msg(timeout=timeout)
 
     def start_heartbeat(self):
         """Start the heartbeat Greenlet to check connection health."""
