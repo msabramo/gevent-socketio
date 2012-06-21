@@ -6,7 +6,6 @@ import gevent
 from gevent.pywsgi import WSGIServer
 from gevent.queue import Queue
 from gevent.event import Event
-from socketio.protocol import SocketIOProtocol
 from socketio.handler import SocketIOHandler
 from socketio.policyserver import FlashPolicyServer
 
@@ -43,11 +42,6 @@ class SocketIOServer(WSGIServer):
         if self.policy_server is not None:
             self.policy_server.kill()
         super(SocketIOServer, self).kill()
-
-    def handle(self, socket, address):
-        handler = self.handler_class(socket, address, self)
-        self.set_environ({'socketio': SocketIOProtocol(handler)})
-        handler.handle()
 
     def get_session(self, session_id=''):
         """Return an existing or new client Session."""
@@ -91,6 +85,7 @@ class Session(object):
                 gevent.spawn(disconnect_timeout)
             else:
                 self.kill()
+                self.wsgi_app_greenlet = None
         gevent.spawn(disconnect_timeout)
 
     def __str__(self):
@@ -127,9 +122,8 @@ class Session(object):
     def kill(self):
         if self.connected:
             self.state = self.STATE_DISCONNECTING
-            self.server_queue.put_nowait(None)
-            self.client_queue.put_nowait(None)
-            #gevent.kill(self.wsgi_app_greenlet)
+            self.server_queue.put_nowait({"type": "disconnect"})
+            self.client_queue.put_nowait("0::")
         else:
             pass # Fail silently
 

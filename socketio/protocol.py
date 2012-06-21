@@ -1,6 +1,7 @@
 from __future__ import absolute_import, unicode_literals
 
 import gevent
+import weakref
 
 from logging import getLogger
 from socketio.packets import AckPacket, EventPacket
@@ -25,7 +26,7 @@ class LegacyProtocol(BaseProtocol):
     """
 
     def __init__(self, handler):
-        self.handler = handler
+        self.handler = weakref.ref(handler)
         self.session = None
 
     def ack(self, msg_id, params):
@@ -34,21 +35,16 @@ class LegacyProtocol(BaseProtocol):
     def emit(self, event, endpoint, *args):
         self.send(EventPacket(None, None, endpoint, event, *args).encode())
 
-    def send(self, message, destination=None):
-        if destination is None:
-            dst_client = self.session
-        else:
-            dst_client = self.handler.server.sessions.get(destination)
-
+    def send(self, message):
+        dst_client = self.session
         self._write(message, dst_client)
 
     def send_event(self, name, *args):
         self.send("5:::" + json.dumps({'name': name, 'args': args}))
 
-    def receive(self):
+    def receive(self, timeout=None):
         """Wait for incoming messages."""
-
-        return self.session.get_server_msg()
+        return self.session.get_server_msg(timeout=timeout)
 
     def broadcast(self, message, exceptions=None, include_self=False):
         """
