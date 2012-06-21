@@ -1,6 +1,7 @@
 import gevent
 import anyjson as json
 from socketio.exceptions import DecodeError
+import weakref
 
 from logging import getLogger
 logger = getLogger("socketio.protocol")
@@ -10,7 +11,7 @@ class SocketIOProtocol(object):
     """SocketIO protocol specific functions."""
 
     def __init__(self, handler):
-        self.handler = handler
+        self.handler = weakref.ref(handler)
         self.session = None
 
     def ack(self, msg_id, params):
@@ -20,12 +21,8 @@ class SocketIOProtocol(object):
         self.send("5::%s:%s" % (endpoint, json.dumps({'name': event,
                                                       'args': args})))
 
-    def send(self, message, destination=None):
-        if destination is None:
-            dst_client = self.session
-        else:
-            dst_client = self.handler.server.sessions.get(destination)
-
+    def send(self, message):
+        dst_client = self.session
         self._write(message, dst_client)
 
     def send_event(self, name, *args):

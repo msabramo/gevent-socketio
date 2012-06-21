@@ -9,6 +9,14 @@ from geventwebsocket.handler import WebSocketHandler
 from socketio.protocol import SocketIOProtocol
 
 
+from logging import getLogger
+logger = getLogger("socketio.handler")
+
+
+class SessionGreenlet(gevent.Greenlet):
+    pass
+
+
 class SocketIOHandler(WSGIHandler):
     RE_REQUEST_URL = re.compile(r"""
         ^/(?P<namespace>[^/]+)
@@ -27,11 +35,9 @@ class SocketIOHandler(WSGIHandler):
         'jsonp-polling': transports.JSONPolling,
     }
 
-    def __init__(self, *args, **kwargs):
-        self.socketio_connection = False
+    def __init__(self, socket, addr, server, *args, **kwargs):
         self.allowed_paths = None
-
-        super(SocketIOHandler, self).__init__(*args, **kwargs)
+        super(SocketIOHandler, self).__init__(socket, addr, server, *args, **kwargs)
 
     def _do_handshake(self, tokens):
         if tokens["namespace"] != self.server.namespace:
@@ -98,15 +104,16 @@ class SocketIOHandler(WSGIHandler):
         transport = self.handler_types.get(request_tokens["transport_id"])
         session_id = request_tokens["session_id"]
 
+        session = self.server.get_session(session_id)
+
+        logger.debug("Handshake for session %r, transport %r", session.session_id, transport)
+
         # In case this is WebSocket request, switch to the WebSocketHandler
         # FIXME: fix this ugly class change
         if transport in (transports.WebsocketTransport, \
                 transports.FlashSocketTransport):
             self.__class__ = WebSocketHandler
             self.handle_one_response()
-            session = self.server.get_session()
-        else:
-            session = self.server.get_session(session_id)
 
         # Make the session object available for WSGI apps
         self.environ['socketio'].session = session
@@ -115,12 +122,18 @@ class SocketIOHandler(WSGIHandler):
         self.transport = transport(self)
         jobs = self.transport.connect(session, request_method)
 
-        try:
-            if not session.wsgi_app_greenlet or not bool(session.wsgi_app_greenlet):
-                session.wsgi_app_greenlet = gevent.spawn(self.application, self.environ, lambda status, headers, exc=None: None)
-        except:
-            self.handle_error(*sys.exc_info())
+        if session.wsgi_app_greenlet is not None:
+            if not session.wsgi_app_greenlet:
+                session.wsgi_app_greenlet.join()
+                logger.debug("Joining finalized greenlet %r -> %r", self, session.wsgi_app_greenlet)
+                session.wsgi_app_greenlet = None
 
+        if not session.wsgi_app_greenlet:
+            start_response = lambda status, headers, exc = None: None
+            logger.debug("Spawning new greenlet for session: %r", session.session_id)
+            session.wsgi_app_greenlet = SessionGreenlet.spawn(self.application, self.environ, start_response)
+
+        logger.debug("New jobs: %r", jobs)
         gevent.joinall(jobs)
 
     def handle_bad_request(self):

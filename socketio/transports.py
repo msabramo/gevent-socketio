@@ -1,6 +1,7 @@
 import gevent
 import socket
 import urlparse
+import weakref
 from logging import getLogger
 
 from gevent.queue import Empty
@@ -21,28 +22,28 @@ class BaseTransport(object):
             ("Access-Control-Max-Age", 3600),
         ]
         self.headers_list = []
-        self.handler = handler
+        self.handler = weakref.ref(handler)
 
     def encode(self, data):
-        return self.handler.environ['socketio'].encode(data)
+        return self.handler().environ['socketio'].encode(data)
 
     def decode(self, data):
-        return self.handler.environ['socketio'].decode(data)
+        return self.handler().environ['socketio'].decode(data)
 
     def write(self, data=""):
-        if 'Content-Length' not in self.handler.response_headers_list:
-            self.handler.response_headers.append(('Content-Length', len(data)))
-            self.handler.response_headers_list.append('Content-Length')
+        if 'Content-Length' not in self.handler().response_headers_list:
+            self.handler().response_headers.append(('Content-Length', len(data)))
+            self.handler().response_headers_list.append('Content-Length')
 
-        self.handler.write(data)
+        self.handler().write(data)
 
     def start_response(self, status, headers, **kwargs):
         if "Content-Type" not in [x[0] for x in headers]:
             headers.append(self.content_type)
 
         headers.extend(self.headers)
-        logger.debug("Sending reply with headers: %r", headers)
-        self.handler.start_response(status, headers, **kwargs)
+        logger.debug("[[%r:%r]] Sending reply %r\n    with headers: %r", self.handler(), self.handler().application, status, headers)
+        self.handler().start_response(status, headers, **kwargs)
 
 
 class XHRPollingTransport(BaseTransport):
@@ -69,7 +70,7 @@ class XHRPollingTransport(BaseTransport):
         return []
 
     def _request_body(self):
-        return self.handler.wsgi_input.readline()
+        return self.handler().wsgi_input.readline()
 
     def post(self, session):
         session.put_server_msg(self.decode(self._request_body()))
@@ -158,39 +159,57 @@ class XHRMultipartTransport(XHRPollingTransport):
         return [gevent.spawn(chunk)]
 
 
+class WSGreenlet(gevent.Greenlet):
+
+    def __init__(self, session, websocket):
+        gevent.Greenlet.__init__(self)
+        self._session = session
+        self._websocket = websocket
+
+    def __str__(self):
+        return "<%s of session %r>" % (type(self).__name__, self._session.session_id)
+
+
+class WSInboundGreenlet(WSGreenlet):
+
+    def _run(self):
+        while True:
+            message = self._websocket.receive()
+
+            if not message:
+                self._session.kill()
+                break
+            else:
+                decoded_message = self.decode(message)
+                if decoded_message is not None:
+                    self._session.put_server_msg(decoded_message)
+
+
+class WSOutboundGreenlet(WSGreenlet):
+
+    def _run(self):
+        while True:
+            message = self._session.get_client_msg()
+
+            if message is None:
+                self._session.kill()
+                break
+
+            self._websocket.send(self.encode(message))
+
+
 class WebsocketTransport(BaseTransport):
+
     def connect(self, session, request_method):
-        websocket = self.handler.environ['wsgi.websocket']
+        websocket = self.handler().environ['wsgi.websocket']
         websocket.send("1::")
 
-        def send_into_ws():
-            while True:
-                message = session.get_client_msg()
+        in_ = WSOutboundGreenlet(session, websocket); in_.start()
+        out_ = WSInboundGreenlet(session, websocket); out_.start()
 
-                if message is None:
-                    session.kill()
-                    break
+        heartbeat = self.handler().environ['socketio'].start_heartbeat()
 
-                websocket.send(self.encode(message))
-
-        def read_from_ws():
-            while True:
-                message = websocket.receive()
-
-                if not message:
-                    session.kill()
-                    break
-                else:
-                    decoded_message = self.decode(message)
-                    if decoded_message is not None:
-                        session.put_server_msg(decoded_message)
-
-        gr1 = gevent.spawn(send_into_ws)
-        gr2 = gevent.spawn(read_from_ws)
-
-        heartbeat = self.handler.environ['socketio'].start_heartbeat()
-
-        return [gr1, gr2, heartbeat]
+        return [in_, out_, heartbeat]
 
 
 class FlashSocketTransport(WebsocketTransport):

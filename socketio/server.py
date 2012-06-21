@@ -82,6 +82,7 @@ class Session(object):
                 gevent.spawn(disconnect_timeout)
             else:
                 self.kill()
+                self.wsgi_app_greenlet = None
         gevent.spawn(disconnect_timeout)
 
     def __str__(self):
@@ -120,7 +121,6 @@ class Session(object):
             self.state = self.STATE_DISCONNECTING
             self.server_queue.put_nowait({"type": "disconnect"})
             self.client_queue.put_nowait("0::")
-            #gevent.kill(self.wsgi_app_greenlet)
         else:
             pass # Fail silently
 
