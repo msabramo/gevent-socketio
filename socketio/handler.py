@@ -5,9 +5,8 @@ import re
 import gevent
 import urlparse
 
-from socketio import transports
+from socketio import transports, protocol
 from geventwebsocket.handler import WebSocketHandler
-from socketio.protocol import SocketIOProtocol
 
 
 from logging import getLogger
@@ -111,7 +110,7 @@ class SocketIOHandler(WebSocketHandler):
         logger.debug("Handshake for session %r, transport %r", session.session_id, transport)
 
         # Make the session object available for WSGI apps
-        self.environ['socketio'] = SocketIOProtocol(session)
+        self.environ['socketio'] = protocol.PySocketProtocol(session)
 
         if transport is transports.WebsocketTransport:
             # fake application

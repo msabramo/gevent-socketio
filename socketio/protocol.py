@@ -1,88 +1,51 @@
 from __future__ import absolute_import, unicode_literals
 
-import gevent
-import weakref
-import json
+from socketio import packets
+
 
 from logging import getLogger
-from socketio.packets import AckPacket, EventPacket
 logger = getLogger("socketio.protocol")
 
 
-from .packets import Packet, NAME_FOR_PACKET, PACKET_BY_NAME
+class PySocketProtocol(object):
 
-
-class BaseProtocol(object):
-
-    def _decode_packet(self, rawdata):
-        return Packet.decode(rawdata)
-
-    def _encode_packet(self, packet):
-        return packet.encode()
-
-
-class LegacyProtocol(BaseProtocol):
-    """
-    Legacy SocketIO protocol implementation, which works on dicts.
-    """
-
-    def __init__(self, session):
+    def __init__(self, session, endpoint=None):
         self._session = session
+        self._endpoint = endpoint
+
+    def _nextid(self):
+        return None
 
     @property
     def session(self):
         return self._session
 
-    def ack(self, msg_id, params):
-        self.send(AckPacket(None, None, "", msg_id, params).encode())
-
-    def emit(self, event, endpoint, *args):
-        self.send(EventPacket(None, None, endpoint, event, *args).encode())
-
-    def send(self, message):
-        dst_client = self.session
-        self._write(message, dst_client)
-
-    def send_event(self, name, *args):
-        self.send("5:::" + json.dumps({'name': name, 'args': args}))
+    def send(self, packet):
+        """
+        Send a prepared packet.
+        """
+        self._session.send(packet)
 
     def receive(self, timeout=None):
         """Wait for incoming messages."""
-        return self._session.get_server_msg(timeout=timeout)
+        return self._session.receive(timeout=timeout)
 
-    def start_heartbeat(self):
-        """Start the heartbeat Greenlet to check connection health."""
-        def ping():
-            self.session.state = self.session.STATE_CONNECTED
-
-            while self.session.connected:
-                gevent.sleep(5.0) # FIXME: make this a setting
-                self.send("2::")
-
-        return gevent.spawn(ping)
-
-    def _write(self, message, session=None):
-        if session is None:
-            raise Exception("No client with that session exists")
+    def _base_args(self, need_ack):
+        if not need_ack:
+            return None, None, self._endpoint
         else:
-            session.put_client_msg(message)
+            return self._nextid(), True, self._endpoint
 
-    def encode(self, message):
-        """
-        Encode dictionary into bytes with message.
-        """
-        if isinstance(message, basestring):
-            return message
-        cls = PACKET_BY_NAME[message.pop("type")]
-        for f in cls._fields:
-            message.setdefault(f, None)
-        return self._encode_packet(cls(**message))
+    def emit(self, event, args, ack=False):
+        """Emit an event."""
+        return self.send_packet(packets.EventPacket(*self._base_args(ack) + (event, args)))
 
-    def decode(self, data):
-        packet = self._decode_packet(data)
-        d = dict((k, v) for k, v in zip(packet._fields, packet) if v is not None)
-        d["type"] = NAME_FOR_PACKET[type(packet)]
-        return d
+    def send_data(self, data, ack=False):
+        """Sends data to the client."""
+        return self.send_packet(packets.DataPacket(*self._base_args(ack) + (data,)))
 
-SocketIOProtocol = LegacyProtocol
+    def send_json(self, json, ack=False):
+        """Send raw JSON to the client."""
+        return self.send_packet(packets.DataPacket(*self._base_args(ack) + (json,)))
 
+SocketIOProtocol = PySocketProtocol

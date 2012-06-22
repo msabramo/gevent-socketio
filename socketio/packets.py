@@ -90,6 +90,11 @@ class Packet(object):
         except ValueError:
             raise DecodeError("Malformed JSON data: %r" % data)
 
+    def _asdict(self):
+        d = {k: v for k, v in zip(self._fields, self) if v is not None}
+        d["type"] = NAME_FOR_PACKET[type(self)]
+        return d
+
     @staticmethod
     def _dump_json(data):
         return json.dumps(data)
