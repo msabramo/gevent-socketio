@@ -101,7 +101,7 @@ if __name__ == "__main__":
     greenlet_pool = gevent.pool.Pool()
 
     import logging
-    logging.basicConfig()
+    logging.basicConfig(level=logging.DEBUG)
 
     def spawn_server(func, port):
         print "Serving port", port, func.__name__
@@ -119,6 +119,8 @@ if __name__ == "__main__":
     for func in test_servers.__dict__.itervalues():
         if not callable(func) or func.__name__.startswith("_"):
             continue
+#        if func.__name__ != "event_to_server_and_ack":
+#            continue
         func = sio_server(func)
         greenlet_pool.spawn(spawn_server, func, port)
         port_mapping[func.__doc__] = port

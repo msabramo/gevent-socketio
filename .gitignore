@@ -1,6 +1,7 @@
 *.pyc
 *.egg-info
 *.egg
+*.orig
 build
 dist
 htmlcov

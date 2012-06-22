@@ -13,9 +13,6 @@ class PySocketProtocol(object):
         self._session = session
         self._endpoint = endpoint
 
-    def _nextid(self):
-        return None
-
     @property
     def session(self):
         return self._session
@@ -24,7 +21,13 @@ class PySocketProtocol(object):
         """
         Send a prepared packet.
         """
-        self._session.send(packet)
+        return self._session.send(packet)
+
+    def ack(self, packet, *args):
+        """
+        Acknowledge that packet was received.
+        """
+        return self._session.ack(packet, *args)
 
     def receive(self, timeout=None):
         """Wait for incoming messages."""
@@ -34,18 +37,22 @@ class PySocketProtocol(object):
         if not need_ack:
             return None, None, self._endpoint
         else:
-            return self._nextid(), True, self._endpoint
+            return self.session.packet_id(), "data", self._endpoint
 
-    def emit(self, event, args, ack=False):
+    def emit(self, event, args=None, ack=False):
         """Emit an event."""
-        return self.send_packet(packets.EventPacket(*self._base_args(ack) + (event, args)))
+        return self.send(packets.EventPacket(*self._base_args(ack) + (event, args)))
 
     def send_data(self, data, ack=False):
         """Sends data to the client."""
-        return self.send_packet(packets.DataPacket(*self._base_args(ack) + (data,)))
+        return self.send(packets.MessagePacket(*self._base_args(ack) + (data,)))
 
     def send_json(self, json, ack=False):
         """Send raw JSON to the client."""
-        return self.send_packet(packets.DataPacket(*self._base_args(ack) + (json,)))
+        return self.send(packets.JSONPacket(*self._base_args(ack) + (json,)))
+
+    def disconnect(self, reason="booted"):
+        return self.send(packets.DisconnectPacket(None, None, self._endpoint))
+
 
 SocketIOProtocol = PySocketProtocol

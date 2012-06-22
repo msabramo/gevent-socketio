@@ -7,9 +7,9 @@ def noop(env, io):
 def receiving(env, io):
     """test receiving messages"""
     for i in range(1, 4):
-        io.send("3:::" + str(i))
+        io.send_data(i)
     gevent.sleep(0.5)
-    io.send("0::")
+    io.disconnect()
 
 def sending(env, io):
     """test sending messages"""
@@ -22,8 +22,8 @@ def sending(env, io):
 
 def acks_from_client(env, io):
     """test acks sent from client"""
-    io.send("tobi")
-    io.send("tobi 2")
+    io.send_data("tobi")
+    io.send_data("tobi 2")
 
 
 def acks_from_server(env, io):
@@ -56,118 +56,92 @@ def acks_from_server(env, io):
 
 def json_from_server(env, io):
     "test sending json from server"
+    io.send_json(3141592)
 
-#      io.sockets.json.send(3141592);
-#    });
-#  });
-#
-#  server('test sending json from client', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.on('message', function (arr) {
-#        if (Array.isArray(arr) && arr.length == 3) {
-#          socket.send('echo');
-#        }
-#      });
-#    });
-#  });
-#
-#  server('test emitting an event from server', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.emit('woot');
-#    });
-#  });
-#
-#  server('test emitting multiple events at once to the server', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      var messages = [];
-#
-#      socket.on('print', function (msg) {
-#        if (messages.indexOf(msg) >= 0) {
-#          console.error('duplicate message');
-#        }
-#
-#        messages.push(msg);
-#        if (messages.length == 2) {
-#          socket.emit('done');
-#        }
-#      });
-#    });
-#  });
-#
-#  server('test emitting an event to server', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.on('woot', function () {
-#        socket.emit('echo');
-#      });
-#    });
-#  });
-#
-#  server('test emitting an event from server and sending back data', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.emit('woot', 1, function (a) {
-#        if (a === 'test') {
-#          socket.emit('done');
-#        }
-#      });
-#    });
-#  });
-#
-#  server('test emitting an event to server and sending back data', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.on('tobi', function (a, b, fn) {
-#        if (a === 1 && b === 2) {
-#          fn({ hello: 'world' });
-#        }
-#      });
-#    });
-#  });
-#
-#  server('test encoding a payload', function (io) {
-#    io.of('/woot').on('connection', function (socket) {
-#      var count = 0;
-#
-#      socket.on('message', function (a) {
-#        if (a == 'ñ') {
-#          if (++count == 4) {
-#            socket.emit('done');
-#          }
-#        }
-#      });
-#    });
-#  });
-#
+def json_from_client(env, io):
+    "test sending json from client"
+    msg = io.receive()
+    if isinstance(msg.data, list) and len(msg.data) == 3:
+        io.send_data("echo")
+
+def event_from_server(env, io):
+    "test emitting an event from server"
+    io.emit("woot")
+
+def multiple_events_from_client(env, io):
+    "test emitting multiple events at once to the server"
+    messages = []
+    while len(messages) < 2:
+        pkt = io.receive()
+        if pkt.name == "print":
+            msg, = pkt.args
+            if pkt.args in messages:
+                raise Exception("Duplicate message")
+            messages.append(msg)
+    io.emit("done")
+
+
+def event_from_client(env, io):
+    "test emitting an event to server"
+    while True:
+        pkt = io.receive()
+        if pkt is None:
+            return
+        if pkt.name == "woot":
+            io.emit("echo")
+
+
+def event_from_server_client_ack(env, io):
+    "test emitting an event from server and sending back data"
+    data, = io.emit("woot", 1, ack=True)
+    assert data == "test"
+    io.emit("done")
+
+
+def event_to_server_and_ack(env, io):
+    "test emitting an event to server and sending back data"
+    pkt = io.receive()
+    assert pkt.name == "tobi"
+    assert pkt.args == [1, 2]
+    io.ack(pkt, {"hello": "world"})
+
+
+#def encoding_payload(env, io):
+#    "test encoding a payload"
+#    #    io.of('/woot').on('connection', function (socket) {
+#    pkt = io.receive()
+#    assert pkt.endpoint == "/woot"
+#    count = 0
+#    while count < 4:
+#        pkt = io.receive()
+#        if pkt.data == u'ñ':
+#            count += 1
+#    io.emit("done")
+
 #  server('test sending query strings to the server', function (io) {
 #    io.sockets.on('connection', function (socket) {
 #      socket.json.send(socket.handshake);
 #    })
 #  });
 #
-#  server('test sending newline', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.on('message', function (msg) {
-#        if (msg == '\n') {
-#          socket.emit('done');
-#        }
-#      });
-#    });
-#  });
-#
-#  server('test sending unicode', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.on('message', function (msg) {
-#        if (msg.test == "☃") {
-#          socket.emit('done');
-#        }
-#      });
-#    });
-#  });
-#
-#  server('test webworker connection', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.on('message', function (msg) {
-#        if (msg == 'woot') {
-#          socket.emit('done');
-#        }
-#      });
-#    });
-#  });
+
+
+def sending_newline(env, io):
+    "test sending newline"
+    pkt = io.receive()
+    assert pkt.data == u'\n'
+    io.emit("done")
+
+
+def sending_unicode(env, io):
+    "test sending unicode"
+    pkt = io.receive()
+    assert pkt.data["test"] == u"☃"
+    io.emit("done")
+
+
+def webworker_test(env, io):
+    "test webworker connection"
+    pkt = io.receive()
+    assert pkt.data == "woot"
+    io.emit("done")

@@ -1,8 +1,6 @@
 from __future__ import absolute_import, unicode_literals
 
 import gevent
-import socket
-import urlparse
 import weakref
 from logging import getLogger
 
@@ -43,7 +41,6 @@ class BaseTransport(object):
             headers.append(self.content_type)
 
         headers.extend(self.headers)
-        logger.debug("[[%r:%r]] Sending reply %r\n    with headers: %r", self.handler(), self.handler().application, status, headers)
         self.handler().start_response(status, headers, **kwargs)
 
 
@@ -57,23 +54,23 @@ class XHRPollingTransport(BaseTransport):
         return []
 
     def get(self, session):
-        session.clear_disconnect_timeout();
+        session.touch();
 
         try:
-            message = session.get_client_msg(timeout=5.0)
+            message = session._fetch_client(timeout=5.0)
         except Empty:
             message = packets.NoopPacket()
 
         self.start_response("200 OK", [])
         self.write_packet(message)
-
         return []
 
     def _request_body(self):
         return self.handler().wsgi_input.readline()
 
     def post(self, session):
-        session.put_server_msg(packets.Packet.decode(self._request_body()))
+        packet = packets.Packet.decode(self._request_body())
+        session.packet_received(packet)
 
         self.start_response("200 OK", [
             ("Connection", "close"),
@@ -98,67 +95,6 @@ class XHRPollingTransport(BaseTransport):
             raise Exception("No support for the method: " + request_method)
 
 
-class JSONPolling(XHRPollingTransport):
-    def __init__(self, handler):
-        super(JSONPolling, self).__init__(handler)
-        self.content_type = ("Content-Type", "text/javascript; charset=UTF-8")
-
-    def _request_body(self):
-        data = super(JSONPolling, self)._request_body()
-        # resolve %20%3F's, take out wrapping d="...", etc..
-        return urlparse.unquote(data)[3:-1].replace(r'\"', '"')
-
-    def write(self, data):
-        super(JSONPolling, self).write("io.j[0]('%s');" % data)
-
-
-class XHRMultipartTransport(XHRPollingTransport):
-    def __init__(self, handler):
-        super(JSONPolling, self).__init__(handler)
-        self.content_type = (
-            "Content-Type",
-            "multipart/x-mixed-replace;boundary=\"socketio\""
-        )
-
-    def connect(self, session, request_method):
-        if request_method == "GET":
-            heartbeat = self.handler.environ['socketio'].start_heartbeat()
-            return [heartbeat] + self.get(session)
-        elif request_method == "POST":
-            return self.post(session)
-        else:
-            raise Exception("No support for such method: " + request_method)
-
-    def get(self, session):
-        header = "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
-
-        self.start_response("200 OK", [("Connection", "keep-alive")])
-        self.write_multipart("--socketio\r\n")
-        self.write_multipart(header)
-        self.write_multipart(self.encode(session.session_id) + "\r\n")
-        self.write_multipart("--socketio\r\n")
-
-        def chunk():
-            while True:
-                message = session.get_client_msg()
-
-                if message is None:
-                    session.kill()
-                    break
-                else:
-                    message = self.encode(message)
-
-                    try:
-                        self.write_multipart(header)
-                        self.write_multipart(message)
-                        self.write_multipart("--socketio\r\n")
-                    except socket.error:
-                        session.kill()
-                        break
-
-        return [gevent.spawn(chunk)]
-
-
 class WSGreenlet(gevent.Greenlet):
 
     def __init__(self, session, websocket):
@@ -167,7 +103,7 @@ class WSGreenlet(gevent.Greenlet):
         self._websocket = websocket
 
     def __str__(self):
-        return "<%s of session %r>" % (type(self).__name__, self._session.session_id)
+        return "<%s of %r>" % (type(self).__name__, self._session)
 
 
 class WSInboundGreenlet(WSGreenlet):
@@ -175,34 +111,64 @@ class WSInboundGreenlet(WSGreenlet):
     def _run(self):
         while True:
             message = self._websocket.receive()
+            logger.debug("Received message from WS: %r", message)
 
             if not message:
+                logger.debug("Websocket closed by client. Killing session: %r", self._session)
                 self._session.kill()
                 break
-            else:
-                decoded_message = packets.Packet.decode(message)
-                if decoded_message is not None:
-                    self._session.put_server_msg(decoded_message)
+
+            try:
+                packet = packets.Packet.decode(message)
+            except Exception:
+                logger.exception("Failed to decode packet: %r", message)
+                continue
+
+            if packet is not None:
+                self._session.packet_received(packet)
 
 
 class WSOutboundGreenlet(WSGreenlet):
 
     def _run(self):
         while True:
-            message = self._session.get_client_msg()
+            message = self._session._fetch_client()
 
             if message is None:
+                logger.debug("Closing outbound communication for session: %r", self._session)
                 self._session.kill()
                 break
 
             try:
-                logger.debug("Sending message %r", message)
+                logger.debug("Sending outbound message: %r", message)
                 self._websocket.send(message.encode())
                 logger.debug("Message %r sent.", message)
             except WebSocketError:
                 logger.exception("Outbound greenlet crashed.")
                 break
 
+
+class HeartbeatGreenlet(gevent.Greenlet):
+
+    def __init__(self, session):
+        gevent.Greenlet.__init__(self)
+        self._session_ref = weakref.ref(session)
+
+    def __str__(self):
+        return "<%s for %r>" % (type(self).__name__, self._session_ref)
+
+    def _run(self):
+        while True:
+            session = self._session_ref()
+            if session is None or session.state != "CONNECTED":
+                return
+            logger.debug("Sending heartbeat for %r", session)
+            session.send(packets.HeartbeatPacket(None, None, None))
+
+            # go back to sleep
+            duration = session.heartbeat
+            del session
+            gevent.sleep(duration // 2)
 
 class WebsocketTransport(BaseTransport):
 
@@ -215,33 +181,7 @@ class WebsocketTransport(BaseTransport):
         out_ = WSInboundGreenlet(session, websocket)
         out_.start()
 
-        # heartbeat = self.handler().environ['socketio'].start_heartbeat()
+        heartbeat = HeartbeatGreenlet(session)
+        heartbeat.start_later(session.heartbeat // 2)
 
-        return [in_, out_]
-
-
-class HTMLFileTransport(XHRPollingTransport):
-    """Not tested at all!"""
-
-    def __init__(self, handler):
-        super(HTMLFileTransport, self).__init__(handler)
-        self.content_type = ("Content-Type", "text/html")
-
-    def write_packed(self, data):
-        self.write("<script>parent.s._('%s', document);</script>" % data)
-
-    def handle_get_response(self, session):
-        self.start_response("200 OK", [
-            ("Connection", "keep-alive"),
-            ("Content-Type", "text/html"),
-            ("Transfer-Encoding", "chunked"),
-        ])
-        self.write("<html><body>" + " " * 244)
-
-        try:
-            message = session.get_client_msg(timeout=5.0)
-            message = self.encode(message)
-        except Empty:
-            message = ""
-
-        self.write_packed(message)
+        return [in_, out_, heartbeat]

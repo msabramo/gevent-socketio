@@ -77,7 +77,7 @@ class DecodeTest(TestCase):
         self.assertMsg(msg, type="message", id=b'5', ack=True, data=b"", endpoint="/tobi")
 
     def test_heartbeat(self):
-        msg = Packet.decode(b'2:::')
+        msg = Packet.decode(b'2::')
         self.assertMsg(msg, type="heartbeat")
 
     def test_connect(self):

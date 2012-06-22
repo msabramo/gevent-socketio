@@ -38,28 +38,27 @@ class Application(object):
             while True:
                 message = socketio.receive()
 
-                print message
-
-                if message and message['type'] == "event":
+                if message and message.kind == "event":
                     self.handle_event(message, socketio)
         else:
             return not_found(start_response)
 
-    def handle_event(self, message, socketio):
-        if message['name'] == "nickname":
-            nickname = message['args'][0]
+    def handle_event(self, message, io):
+        if message.name == "nickname":
+            nickname = message.args[0]
             nickdict = {}
             nickdict[nickname] = nickname
-            socketio.session.nickname = nickname
+            io.session.nickname = nickname
 
             self.cache['nicknames'].add(nickname)
 
-            socketio.ack(message['id'], [0])
-            socketio.broadcast_event("announcement", "%s connected" % nickname)
-            socketio.broadcast_event("nicknames", list(self.cache['nicknames']), include_self=True)
+            # io.ack(message.id, [0])
+            # io.broadcast_event("announcement", "%s connected" % nickname)
+            # io.broadcast_event("nicknames", list(self.cache['nicknames']), include_self=True)
 
-        elif message['name'] == "user message":
-            socketio.broadcast_event("user message", socketio.session.nickname, message['args'][0])
+        elif message.name == "user_message":
+            # io.broadcast_event("user message", io.session.nickname, message['args'][0])
+            pass
 
 
 def not_found(start_response):
@@ -68,5 +67,7 @@ def not_found(start_response):
 
 
 if __name__ == '__main__':
-    print 'Listening on port 8080 and on port 843 (flash policy server)'
+    print "Listening on port 8080"
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
     SocketIOServer(('127.0.0.1', 8080), Application(), namespace="socket.io", policy_server=False).serve_forever()

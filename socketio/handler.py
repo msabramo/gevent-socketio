@@ -45,8 +45,7 @@ class SocketIOHandler(WebSocketHandler):
             self.log_error("Namespace mismatch")
         else:
             session = self.server.create_session()
-            data = "%s:15:10:websocket,xhr-polling" % (session.session_id,)
-            self.write_smart(data)
+            self.write_smart(session.handshake_string())
 
     def write_jsonp_result(self, data, wrapper="0"):
         self.start_response("200 OK", [
@@ -83,7 +82,7 @@ class SocketIOHandler(WebSocketHandler):
 
         path = self.environ.get('PATH_INFO')
 
-        logger.info("REQUEST PATH: %s", path)
+        logger.info("REQUEST: %s @ %s", self.environ["SERVER_PORT"], path)
         request_method = self.environ.get("REQUEST_METHOD")
         request_tokens = self.RE_REQUEST_URL.match(path)
 

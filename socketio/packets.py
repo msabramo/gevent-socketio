@@ -71,6 +71,10 @@ class Packet(object):
     def _encoded_data(self):
         return None
 
+    @property
+    def kind(self):
+        return NAME_FOR_PACKET[type(self)]
+
     @classmethod
     def from_data(cls, id, ack, endpoint, *args, **kwargs):
         return cls(id, ("data" if ack else True) if id else None,
@@ -92,12 +96,15 @@ class Packet(object):
 
     def _asdict(self):
         d = {k: v for k, v in zip(self._fields, self) if v is not None}
-        d["type"] = NAME_FOR_PACKET[type(self)]
+        d["type"] = self.kind
         return d
 
     @staticmethod
     def _dump_json(data):
         return json.dumps(data)
+
+    def __repr__(self):
+        return "<%s packet: %s>" % (self.kind, tuple.__repr__(self))
 
 class ErrorPacket(Packet, namedtuple("_ErrorPacket", BASE_FIELDS + ("reason", "advice"))):
     __slots__ = ()
