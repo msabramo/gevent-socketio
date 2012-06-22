@@ -118,13 +118,9 @@ def event_to_server_and_ack(env, io):
 #            count += 1
 #    io.emit("done")
 
-#  server('test sending query strings to the server', function (io) {
-#    io.sockets.on('connection', function (socket) {
-#      socket.json.send(socket.handshake);
-#    })
-#  });
-#
-
+def sending_query_strings_to_server(env, io):
+    "test sending query strings to the server"
+    io.send_json(io.session.handshake_info)
 
 def sending_newline(env, io):
     "test sending newline"

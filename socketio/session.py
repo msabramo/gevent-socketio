@@ -55,12 +55,15 @@ class Session(object):
     STATE_DISCONNECTING = "DISCONNECTING"
     STATE_DISCONNECTED = "DISCONNECTED"
 
-    def __init__(self, server, expire=10, heartbeat=15):
+    def __init__(self, server, handshake_info, expire=10, heartbeat=15):
+        self.handshake_info = handshake_info  # Info sent in handshake data
+
         self._server = weakref.ref(server)
         self.__packetid = 1
         self._acks = weakref.WeakValueDictionary()
 
         self.session_id = uuid.uuid1().hex
+
         self.state = "NEW"
         self.connection_confirmed = False
         self.timestamp = time.clock()
@@ -69,8 +72,8 @@ class Session(object):
         self.expire = expire
         self.heartbeat = heartbeat
 
-        self.client_queue = Queue() # queue for messages to client
-        self.server_queue = Queue() # queue for messages to server
+        self.client_queue = Queue()  # queue for messages to client
+        self.server_queue = Queue()  # queue for messages to server
 
         self.expire_greenlet = SessionExpireGreenlet(expire, self)
         self.expire_greenlet.start_later(expire)

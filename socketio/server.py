@@ -6,6 +6,7 @@ from gevent.pywsgi import WSGIServer
 from socketio.handler import SocketIOHandler
 from socketio.session import Session
 
+import urlparse
 
 from logging import getLogger
 logger = getLogger("socketio.server")
@@ -34,7 +35,13 @@ class SocketIOServer(WSGIServer):
             session.touch()  # Touch the session as used
         return session
 
-    def create_session(self):
-        session = Session(self)
+    def create_session(self, environ):
+        """
+        Create a new session on the server.
+        """
+        handshake_data = {
+            "query": dict(urlparse.parse_qsl(environ["QUERY_STRING"]))
+        }
+        session = Session(self, handshake_data)
         self._sessions[session.session_id] = session
         return session

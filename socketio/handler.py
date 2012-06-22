@@ -39,12 +39,11 @@ class SocketIOHandler(WebSocketHandler):
         self.allowed_paths = None
         super(SocketIOHandler, self).__init__(socket, addr, server, *args, **kwargs)
 
-
     def _do_handshake(self, tokens):
         if tokens["namespace"] != self.server.namespace:
             self.log_error("Namespace mismatch")
         else:
-            session = self.server.create_session()
+            session = self.server.create_session(self.environ)
             self.write_smart(session.handshake_string())
 
     def write_jsonp_result(self, data, wrapper="0"):
